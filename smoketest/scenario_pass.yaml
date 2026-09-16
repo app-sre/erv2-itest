@@ -1,0 +1,34 @@
+# Exercises run.py's own mechanics against a fake, throwaway image (no AWS
+# needed) - two "still in progress" loops followed by settle, then cleanup.
+name: smoketest-pass
+description: exercises the runner's happy path against a fake image
+module:
+  image: erv2it-fake:latest
+  credentials_file: smoketest/credentials
+base_input: smoketest/base_input.json
+steps:
+  - name: loop 1
+    input: {}
+    action: Apply
+    dry_run: false
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: loop 2 settles
+    input: {}
+    action: Apply
+    dry_run: false
+    expect:
+      exit_code: 0
+      log_contains:
+        - "No changes."
+cleanup:
+  name: destroy
+  input: {}
+  action: Destroy
+  dry_run: false
+  expect:
+    exit_code: 0
+    log_contains:
+      - "Destroy complete!"

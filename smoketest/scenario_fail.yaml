@@ -1,0 +1,27 @@
+# Deliberately wrong expectation (the fake module always signals "still in
+# progress" via exit 1 on its first loop, but this step wrongly expects 0) -
+# regression guard proving the runner catches this instead of silently
+# passing. This is the exact class of bug ("Bug B": a loop that should
+# signal "still in progress" via sys.exit(1) but doesn't/isn't checked) that
+# slipped through manual e2e testing and had to be caught by a human noticing
+# the logs.
+name: smoketest-fail
+description: deliberately wrong expectation, to prove the runner catches it
+module:
+  image: erv2it-fake:latest
+  credentials_file: smoketest/credentials
+base_input: smoketest/base_input.json
+steps:
+  - name: loop 1 wrongly expects exit 0
+    input: {}
+    action: Apply
+    dry_run: false
+    expect:
+      exit_code: 0
+cleanup:
+  name: destroy
+  input: {}
+  action: Destroy
+  dry_run: false
+  expect:
+    exit_code: 0
