@@ -25,10 +25,12 @@ def get_logger() -> logging.Logger:
     return logging.getLogger(LOGGER_NAME)
 
 
-def configure_logging(log_path: Path | None) -> logging.Logger:
+def configure_logging(
+    log_path: Path | None, level: int = logging.INFO
+) -> logging.Logger:
     """Configure the shared logger: always to stdout, and to log_path if given."""
     logger = get_logger()
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
     logger.handlers.clear()
 
     formatter = logging.Formatter("%(message)s")

@@ -13,6 +13,7 @@ requires-python = "~=3.14.0"
 dependencies = [
     "pyyaml",
     "pydantic",
+    "pydantic-settings[yaml]",
     "typer",
     "external-resources-io==0.7.0",
 ]
@@ -103,7 +104,7 @@ preview = true
 known-first-party = ["erv2_itest"]
 
 [tool.ruff.lint.flake8-type-checking]
-runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
 runtime-evaluated-decorators = [
     "dataclasses.dataclass",
     "pydantic.dataclasses.dataclass",

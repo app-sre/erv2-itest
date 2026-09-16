@@ -27,14 +27,16 @@ runner = CliRunner()
 
 
 def test_dry_run_preview_never_calls_docker(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without --no-dry-run, the scenario must resolve but Docker must never be invoked."""
+    """With --dry-run, the scenario must resolve but Docker must never be invoked."""
 
     def _fail_if_called(**_: object) -> None:
         raise AssertionError("dry-run must never invoke docker")
 
-    monkeypatch.setattr(cli_module, "run_container", _fail_if_called)
+    monkeypatch.setattr("erv2_itest.runner.run_container", _fail_if_called)
 
-    result = runner.invoke(cli_module.app, [str(SMOKETEST_DIR / "scenario_pass.yaml")])
+    result = runner.invoke(
+        cli_module.app, [str(SMOKETEST_DIR / "scenario_pass.yaml"), "--dry-run"]
+    )
 
     assert result.exit_code == EXIT_OK, result.output
     assert "dry-run" in result.output.lower()

@@ -20,8 +20,8 @@ def container_engine() -> str:
     return "podman" if shutil.which("podman") else "docker"
 
 
-def _kill_container(container_name: str) -> None:
-    """Kill the actual container by name.
+def _kill_container(container_name: str, *, engine: str) -> None:
+    """Kill the actual container by name, using the same engine it was started with.
 
     Killing the local docker/podman CLI client process (e.g. process.kill())
     is NOT enough: for a non-detached `run`, the container itself keeps
@@ -30,7 +30,7 @@ def _kill_container(container_name: str) -> None:
     Ctrl-C, undetected, until it was noticed separately.
     """
     subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [container_engine(), "kill", container_name],
+        [engine, "kill", container_name],
         check=False,
         capture_output=True,
     )
@@ -46,14 +46,17 @@ def run_container(
     dry_run: bool,
     container_name: str,
     timeout_seconds: int,
+    engine: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[int, str]:
     """Run the module image, streaming output live and returning (exit_code, combined_output).
 
     Deliberately omits `-it`: allocating a TTY fails or hangs when there isn't
     one, which is always the case for an unattended/agent-driven run.
     """
+    resolved_engine = engine or container_engine()
     cmd = [
-        container_engine(),
+        resolved_engine,
         "run",
         "--rm",
         "--name",
@@ -68,8 +71,10 @@ def run_container(
         f"DRY_RUN={dry_run}",
         "-e",
         f"ACTION={action}",
-        image,
     ]
+    for key, value in (extra_env or {}).items():
+        cmd += ["-e", f"{key}={value}"]
+    cmd.append(image)
     logger.info("    $ %s", " ".join(cmd))
 
     lines: list[str] = []
@@ -98,14 +103,14 @@ def run_container(
             timeout_seconds,
             container_name,
         )
-        _kill_container(container_name)
+        _kill_container(container_name, engine=resolved_engine)
         process.kill()
         exit_code = process.wait()
     except KeyboardInterrupt:
         logger.info(
             "    [erv2_itest] Interrupted, killing container %s", container_name
         )
-        _kill_container(container_name)
+        _kill_container(container_name, engine=resolved_engine)
         process.kill()
         process.wait()
         reader.join(timeout=5)
