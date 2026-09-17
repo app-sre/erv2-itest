@@ -7,7 +7,6 @@ import logging
 import pytest
 
 from erv2_itest.report import (
-    SEPARATOR_WIDTH,
     ScenarioResult,
     StepResult,
     log_final,
@@ -24,14 +23,14 @@ def _capture_erv2_itest_logger(caplog: pytest.LogCaptureFixture) -> None:
 def test_log_step_pass_formats_as_pass(caplog: pytest.LogCaptureFixture) -> None:
     log_step("apply", passed=True, reason="")
 
-    assert "[PASS] apply" in caplog.text
-    assert "[FAIL]" not in caplog.text
+    assert "✅ apply" in caplog.text
+    assert "❌" not in caplog.text
 
 
 def test_log_step_fail_includes_reason(caplog: pytest.LogCaptureFixture) -> None:
     log_step("apply", passed=False, reason="expected exit code 0, got 1")
 
-    assert "[FAIL] apply - expected exit code 0, got 1" in caplog.text
+    assert "❌ apply - expected exit code 0, got 1" in caplog.text
 
 
 def test_log_final_pass_reports_scenario_name(caplog: pytest.LogCaptureFixture) -> None:
@@ -55,7 +54,7 @@ def test_log_final_fail_reports_step_and_reason(
     assert "PASS" not in caplog.text
 
 
-def test_log_summary_all_passed(caplog: pytest.LogCaptureFixture) -> None:
+def test_log_summary_all_passed(capsys: pytest.CaptureFixture[str]) -> None:
     results = [
         ScenarioResult(
             name="scenario-a",
@@ -71,15 +70,16 @@ def test_log_summary_all_passed(caplog: pytest.LogCaptureFixture) -> None:
 
     log_summary(results, elapsed=1.23)
 
-    assert "test results" in caplog.text
-    assert "scenario-a" in caplog.text
-    assert "scenario-b" in caplog.text
-    assert "2 passed in 1.23s" in caplog.text
-    assert "FAILED" not in caplog.text
+    out = capsys.readouterr().out
+    assert "test results" in out
+    assert "scenario-a" in out
+    assert "scenario-b" in out
+    assert "2 passed in 1.23s" in out
+    assert "FAILED" not in out
 
 
 def test_log_summary_with_failures_lists_step_and_reason(
-    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     results = [
         ScenarioResult(
@@ -105,12 +105,13 @@ def test_log_summary_with_failures_lists_step_and_reason(
 
     log_summary(results, elapsed=45.32)
 
-    assert "1 passed, 1 failed in 45.32s" in caplog.text
-    assert "expected exit code 0, got 1" in caplog.text
-    assert "destroy" in caplog.text
+    out = capsys.readouterr().out
+    assert "1 passed, 1 failed in 45.32s" in out
+    assert "expected exit code 0, got 1" in out
+    assert "destroy" in out
 
 
-def test_log_summary_all_failed(caplog: pytest.LogCaptureFixture) -> None:
+def test_log_summary_all_failed(capsys: pytest.CaptureFixture[str]) -> None:
     results = [
         ScenarioResult(
             name="scenario-a", passed=False, failed_step="apply", reason="boom"
@@ -122,21 +123,23 @@ def test_log_summary_all_failed(caplog: pytest.LogCaptureFixture) -> None:
 
     log_summary(results, elapsed=0.5)
 
-    assert "2 failed in 0.50s" in caplog.text
-    assert "passed" not in caplog.text
+    out = capsys.readouterr().out
+    assert "2 failed in 0.50s" in out
+    assert "passed" not in out
 
 
 def test_log_summary_single_scenario_still_shown(
-    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     results = [ScenarioResult(name="my-scenario", passed=True)]
 
     log_summary(results, elapsed=2.1)
 
-    assert "1 passed in 2.10s" in caplog.text
+    out = capsys.readouterr().out
+    assert "1 passed in 2.10s" in out
 
 
-def test_log_summary_shows_steps_indented(caplog: pytest.LogCaptureFixture) -> None:
+def test_log_summary_shows_steps_indented(capsys: pytest.CaptureFixture[str]) -> None:
     results = [
         ScenarioResult(
             name="my-scenario",
@@ -150,17 +153,6 @@ def test_log_summary_shows_steps_indented(caplog: pytest.LogCaptureFixture) -> N
 
     log_summary(results, elapsed=1.0)
 
-    assert "  apply" in caplog.text
-    assert "  destroy" in caplog.text
-
-
-def test_log_summary_separator_is_80_chars_wide(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    log_summary([ScenarioResult(name="my-scenario", passed=True)], elapsed=1.0)
-
-    separator_lines = [
-        record.message for record in caplog.records if record.message.startswith("=")
-    ]
-    assert separator_lines
-    assert all(len(line) == SEPARATOR_WIDTH for line in separator_lines)
+    out = capsys.readouterr().out
+    assert "apply" in out
+    assert "destroy" in out

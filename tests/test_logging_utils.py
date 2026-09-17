@@ -9,15 +9,19 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from erv2_itest.logging_utils import (
+    ConsoleHandler,
     RunRecord,
     StepRecord,
     configure_logging,
+    get_console,
     get_logger,
     now_iso,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 ISO_8601_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?\+00:00$")
 STDOUT_AND_FILE_HANDLER_COUNT = 2
@@ -31,7 +35,7 @@ def test_configure_logging_without_path_adds_only_stdout_handler() -> None:
     logger = configure_logging(log_path=None)
 
     assert len(logger.handlers) == 1
-    assert isinstance(logger.handlers[0], logging.StreamHandler)
+    assert isinstance(logger.handlers[0], ConsoleHandler)
     assert not isinstance(logger.handlers[0], logging.FileHandler)
 
 
@@ -45,7 +49,7 @@ def test_configure_logging_with_path_adds_stdout_and_file_handlers(
     assert len(logger.handlers) == STDOUT_AND_FILE_HANDLER_COUNT
     handler_types = {type(h) for h in logger.handlers}
     assert logging.FileHandler in handler_types
-    assert logging.StreamHandler in handler_types
+    assert ConsoleHandler in handler_types
 
 
 def test_configure_logging_actually_writes_to_the_file(tmp_path: Path) -> None:
@@ -57,6 +61,24 @@ def test_configure_logging_actually_writes_to_the_file(tmp_path: Path) -> None:
         handler.flush()
 
     assert "hello from the test suite" in log_path.read_text(encoding="utf-8")
+
+
+def test_console_handler_routes_print_failures_through_handle_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    console = get_console()
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(console, "print", _boom)
+    handler = ConsoleHandler(console)
+    called: list[logging.LogRecord] = []
+    monkeypatch.setattr(handler, "handleError", called.append)
+
+    handler.emit(logging.LogRecord("x", logging.INFO, "x", 1, "hi", None, None))
+
+    assert len(called) == 1
 
 
 def test_configure_logging_replaces_previous_handlers(tmp_path: Path) -> None:

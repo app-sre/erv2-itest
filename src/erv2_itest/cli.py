@@ -33,12 +33,35 @@ from typing import Annotated, Any
 import typer
 import yaml
 from external_resources_io.exit_status import EXIT_ERROR, EXIT_OK
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from .config import ErvItestConfig
 from .docker_runner import image_created_at
-from .logging_utils import RunRecord, StepRecord, configure_logging, get_logger, now_iso
+from .logging_utils import (
+    RunRecord,
+    StepRecord,
+    configure_logging,
+    get_console,
+    get_logger,
+    now_iso,
+)
 from .models import Mode, ModuleConfig, Scenario, ScenarioStep, TerraformModuleConfig
-from .report import ScenarioResult, StepResult, log_final, log_step, log_summary
+from .report import (
+    ScenarioResult,
+    StepResult,
+    log_final,
+    log_scenario_divider,
+    log_step,
+    log_step_header,
+    log_summary,
+)
 from .runner import Runner, get_runner
 from .vault import get_or_create_credentials_file
 
@@ -286,13 +309,13 @@ def log_image_built(module: ModuleConfig | TerraformModuleConfig) -> None:
         return
     if not built:
         logger.info(
-            "Built:    ⚠ could not inspect image %r - not pulled/built locally, "
+            "🏗️ Built:    ⚠ could not inspect image %r - not pulled/built locally, "
             "or the container engine isn't reachable. Every step below will "
             "likely fail.",
             module.image,
         )
     else:
-        logger.info("Built:    %s", built)
+        logger.info("🏗️ Built:    %s", built)
 
 
 def log_dry_preview(scenario: Scenario) -> None:
@@ -326,6 +349,7 @@ def run_and_record(
     record: RunRecord,
 ) -> tuple[bool, dict[str, Any], str]:
     """Run one step, log its result, and append it to the structured run record."""
+    log_step_header(step.name)
     ok, merged, reason, exit_code = run_step(
         step,
         runner=runner,
@@ -372,6 +396,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     base_input still target the same resources.
     """
     parsed_scenario = load_scenario(scenario_path)
+    log_scenario_divider(parsed_scenario.name)
     target_step = find_step(parsed_scenario, only_step) if only_step else None
     effective_mode: Mode = parsed_scenario.mode or config.default_mode
     module = resolve_module(
@@ -395,10 +420,10 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
 
     if dry_run:
         configure_logging(log_path=None, level=log_level)
-        logger.info("Scenario: %s", parsed_scenario.name)
-        logger.info("Run ID:   %s", run_id)
-        logger.info("Mode:     %s", effective_mode)
-        logger.info("Target:   %s", target)
+        logger.info("🧪 Scenario: %s", parsed_scenario.name)
+        logger.info("🆔 Run ID:   %s", run_id)
+        logger.info("⚙️ Mode:     %s", effective_mode)
+        logger.info("🎯 Target:   %s", target)
         log_image_built(module)
         if target_step is not None:
             logger.info(
@@ -418,15 +443,15 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     json_path = logs_dir / f"{run_id}.json"
     configure_logging(log_path=log_path, level=log_level)
 
-    logger.info("Scenario: %s", parsed_scenario.name)
-    logger.info("Run ID:   %s", run_id)
-    logger.info("Mode:     %s", effective_mode)
-    logger.info("Target:   %s", target)
+    logger.info("🧪 Scenario: %s", parsed_scenario.name)
+    logger.info("🆔 Run ID:   %s", run_id)
+    logger.info("⚙️ Mode:     %s", effective_mode)
+    logger.info("🎯 Target:   %s", target)
     log_image_built(module)
     if target_step is not None:
-        logger.info("Step:     %s", target_step.name)
-    logger.info("Log:      %s", log_path)
-    logger.info("Summary:  %s", json_path)
+        logger.info("👣 Step:     %s", target_step.name)
+    logger.info("📄 Log:      %s", log_path)
+    logger.info("📊 Summary:  %s", json_path)
 
     record = RunRecord(
         scenario_name=parsed_scenario.name,
@@ -629,36 +654,50 @@ def main(
 
     results: list[ScenarioResult] = []
     start = time.monotonic()
-    for scenario_path in scenario_paths:
-        try:
-            result = run_scenario(
-                scenario_path,
-                output_dir=effective_output_dir,
-                dry_run=dry_run,
-                keep=keep,
-                config=config,
-                log_level=effective_level,
-                refresh_credentials=refresh_credentials,
-                run_id_override=run_id,
-                only_step=only_step,
-            )
-        except (ValueError, RuntimeError) as exc:
-            # Expected, user-actionable setup failures (missing module/terraform
-            # config, Vault unreachable/not logged in) - report cleanly instead of a
-            # full traceback, which is only useful for genuine bugs.
-            configure_logging(log_path=None, level=effective_level)
-            log_final(
-                scenario_path.name, passed=False, failed_step="setup", reason=str(exc)
-            )
-            result = ScenarioResult(
-                name=scenario_path.name,
-                passed=False,
-                failed_step="setup",
-                reason=str(exc),
-            )
-        results.append(result)
-        if not result.passed and fail_fast:
-            break
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=get_console(),
+    )
+    with progress:
+        task = progress.add_task("Running scenarios", total=len(scenario_paths))
+        for scenario_path in scenario_paths:
+            progress.advance(task)
+            try:
+                result = run_scenario(
+                    scenario_path,
+                    output_dir=effective_output_dir,
+                    dry_run=dry_run,
+                    keep=keep,
+                    config=config,
+                    log_level=effective_level,
+                    refresh_credentials=refresh_credentials,
+                    run_id_override=run_id,
+                    only_step=only_step,
+                )
+            except (ValueError, RuntimeError) as exc:
+                # Expected, user-actionable setup failures (missing module/terraform
+                # config, Vault unreachable/not logged in) - report cleanly instead
+                # of a full traceback, which is only useful for genuine bugs.
+                configure_logging(log_path=None, level=effective_level)
+                log_final(
+                    scenario_path.name,
+                    passed=False,
+                    failed_step="setup",
+                    reason=str(exc),
+                )
+                result = ScenarioResult(
+                    name=scenario_path.name,
+                    passed=False,
+                    failed_step="setup",
+                    reason=str(exc),
+                )
+            results.append(result)
+            if not result.passed and fail_fast:
+                break
 
     log_summary(results, elapsed=time.monotonic() - start)
 

@@ -463,7 +463,7 @@ def test_missing_module_and_no_config_default_falls_back_to_cwd_basename_image(
     result = runner.invoke(cli_module.app, [str(scenario_path), "--dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert f"Target:   {tmp_path.name}:prod" in result.output
+    assert f"🎯 Target:   {tmp_path.name}:prod" in result.output
 
 
 def test_missing_base_input_defaults_to_empty_input(
@@ -742,7 +742,7 @@ def test_header_shows_image_build_date(
     result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "Built:    2026-09-10 12:34:56 UTC" in result.output
+    assert "🏗️ Built:    2026-09-10 12:34:56 UTC" in result.output
 
 
 def test_header_warns_loudly_when_image_missing_locally(
@@ -758,7 +758,7 @@ def test_header_warns_loudly_when_image_missing_locally(
     result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "Built:    ⚠ could not inspect image" in result.output
+    assert "🏗️ Built:    ⚠ could not inspect image" in result.output
     assert "'fake:latest'" in result.output
 
 
@@ -790,7 +790,7 @@ def test_header_shows_build_date_in_dry_run_too(
     result = runner.invoke(cli_module.app, [str(scenario_path), "--dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "Built:    2026-09-10 12:34:56 UTC" in result.output
+    assert "🏗️ Built:    2026-09-10 12:34:56 UTC" in result.output
 
 
 def test_header_has_no_build_line_for_terraform_scenarios(

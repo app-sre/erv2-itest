@@ -140,6 +140,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "typer" },
 ]
 
@@ -154,10 +155,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "external-resources-io", specifier = "==0.7.0" },
+    { name = "external-resources-io" },
     { name = "pydantic" },
     { name = "pydantic-settings", extras = ["yaml"] },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "typer" },
 ]
 
