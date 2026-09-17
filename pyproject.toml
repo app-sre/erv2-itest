@@ -1,6 +1,6 @@
 [project]
 name = "erv2-itest"
-version = "0.1.0"
+version = "0.2.0"
 description = "Unattended integration-test framework for ERv2 modules"
 authors = [{ name = "Christian Assing", email = "cassing@redhat.com" }]
 license = { text = "Apache 2.0" }
