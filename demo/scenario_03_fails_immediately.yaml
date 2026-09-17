@@ -1,0 +1,18 @@
+# Deliberately wrong expectation - fails on the very first step. Shows the
+# ❌ FAILED row and reason in the final report table.
+name: demo-fails-immediately
+description: deliberately wrong expectation - fails right away
+module:
+  image: erv2it-demo:latest
+  credentials_file: demo/credentials
+base_input: demo/base_input.json
+steps:
+  - name: apply (wrongly expects instant convergence)
+    action: Apply
+    expect:
+      exit_code: 0
+cleanup:
+  name: destroy
+  action: Destroy
+  expect:
+    exit_code: 0

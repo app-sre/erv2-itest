@@ -25,6 +25,7 @@ import json
 import logging
 import secrets
 import shutil
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -32,11 +33,35 @@ from typing import Annotated, Any
 import typer
 import yaml
 from external_resources_io.exit_status import EXIT_ERROR, EXIT_OK
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from .config import ErvItestConfig
-from .logging_utils import RunRecord, StepRecord, configure_logging, get_logger, now_iso
+from .docker_runner import image_created_at
+from .logging_utils import (
+    RunRecord,
+    StepRecord,
+    configure_logging,
+    get_console,
+    get_logger,
+    now_iso,
+)
 from .models import Mode, ModuleConfig, Scenario, ScenarioStep, TerraformModuleConfig
-from .report import log_final, log_step, log_summary
+from .report import (
+    ScenarioResult,
+    StepResult,
+    log_final,
+    log_scenario_divider,
+    log_step,
+    log_step_header,
+    log_summary,
+)
 from .runner import Runner, get_runner
 from .vault import get_or_create_credentials_file
 
@@ -270,6 +295,29 @@ def container_name_for(run_id: str, step_name: str) -> str:
     return f"{run_id}-{slug}"[:63]
 
 
+def log_image_built(module: ModuleConfig | TerraformModuleConfig) -> None:
+    """Log the module image's build date, or a loud warning if it's missing locally.
+
+    Terraform scenarios have no image, so this is a no-op for those. A missing
+    image means every step is about to fail - surface it in the header instead
+    of letting a human discover it three steps deep in a container-run log.
+    """
+    if not isinstance(module, ModuleConfig):
+        return
+    built = image_created_at(module.image, engine=module.container_engine)
+    if built is None:
+        return
+    if not built:
+        logger.info(
+            "🏗️ Built:    ⚠ could not inspect image %r - not pulled/built locally, "
+            "or the container engine isn't reachable. Every step below will "
+            "likely fail.",
+            module.image,
+        )
+    else:
+        logger.info("🏗️ Built:    %s", built)
+
+
 def log_dry_preview(scenario: Scenario) -> None:
     """Log what would run, without touching Docker/AWS."""
     logger.info(
@@ -301,6 +349,7 @@ def run_and_record(
     record: RunRecord,
 ) -> tuple[bool, dict[str, Any], str]:
     """Run one step, log its result, and append it to the structured run record."""
+    log_step_header(step.name)
     ok, merged, reason, exit_code = run_step(
         step,
         runner=runner,
@@ -335,8 +384,8 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     refresh_credentials: bool,
     run_id_override: str | None = None,
     only_step: str | None = None,
-) -> bool:
-    """Run (or preview) a single scenario file. Returns True if it passed.
+) -> ScenarioResult:
+    """Run (or preview) a single scenario file. Returns its pass/fail result.
 
     `only_step`, if given, runs just that one step (matched by name against both
     `steps` and `cleanup`) instead of the full sequence - e.g. to manually re-run
@@ -347,6 +396,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     base_input still target the same resources.
     """
     parsed_scenario = load_scenario(scenario_path)
+    log_scenario_divider(parsed_scenario.name)
     target_step = find_step(parsed_scenario, only_step) if only_step else None
     effective_mode: Mode = parsed_scenario.mode or config.default_mode
     module = resolve_module(
@@ -370,10 +420,11 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
 
     if dry_run:
         configure_logging(log_path=None, level=log_level)
-        logger.info("Scenario: %s", parsed_scenario.name)
-        logger.info("Run ID:   %s", run_id)
-        logger.info("Mode:     %s", effective_mode)
-        logger.info("Target:   %s", target)
+        logger.info("🧪 Scenario: %s", parsed_scenario.name)
+        logger.info("🆔 Run ID:   %s", run_id)
+        logger.info("⚙️ Mode:     %s", effective_mode)
+        logger.info("🎯 Target:   %s", target)
+        log_image_built(module)
         if target_step is not None:
             logger.info(
                 "\n--dry-run: nothing will run against Docker/AWS. Would "
@@ -384,7 +435,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
             )
         else:
             log_dry_preview(parsed_scenario)
-        return True
+        return ScenarioResult(name=parsed_scenario.name, passed=True)
 
     logs_dir = output_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -392,14 +443,15 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     json_path = logs_dir / f"{run_id}.json"
     configure_logging(log_path=log_path, level=log_level)
 
-    logger.info("Scenario: %s", parsed_scenario.name)
-    logger.info("Run ID:   %s", run_id)
-    logger.info("Mode:     %s", effective_mode)
-    logger.info("Target:   %s", target)
+    logger.info("🧪 Scenario: %s", parsed_scenario.name)
+    logger.info("🆔 Run ID:   %s", run_id)
+    logger.info("⚙️ Mode:     %s", effective_mode)
+    logger.info("🎯 Target:   %s", target)
+    log_image_built(module)
     if target_step is not None:
-        logger.info("Step:     %s", target_step.name)
-    logger.info("Log:      %s", log_path)
-    logger.info("Summary:  %s", json_path)
+        logger.info("👣 Step:     %s", target_step.name)
+    logger.info("📄 Log:      %s", log_path)
+    logger.info("📊 Summary:  %s", json_path)
 
     record = RunRecord(
         scenario_name=parsed_scenario.name,
@@ -414,6 +466,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     passed = True
     failure_reason = ""
     failed_step_name = ""
+    step_results: list[StepResult] = []
 
     steps_to_run = [target_step] if target_step is not None else parsed_scenario.steps
     for step in steps_to_run:
@@ -426,6 +479,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
             run_id=run_id,
             record=record,
         )
+        step_results.append(StepResult(name=step.name, passed=ok, reason=reason))
         if not ok:
             passed, failure_reason, failed_step_name = False, reason, step.name
             break
@@ -440,6 +494,9 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
                 work_dir=work_dir,
                 run_id=run_id,
                 record=record,
+            )
+            step_results.append(
+                StepResult(name=parsed_scenario.cleanup.name, passed=ok, reason=reason)
             )
             if not ok and passed:
                 passed, failure_reason, failed_step_name = (
@@ -465,7 +522,13 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
         failed_step=failed_step_name,
         reason=failure_reason,
     )
-    return passed
+    return ScenarioResult(
+        name=parsed_scenario.name,
+        passed=passed,
+        failed_step=failed_step_name,
+        reason=failure_reason,
+        steps=tuple(step_results),
+    )
 
 
 app = typer.Typer()
@@ -589,37 +652,56 @@ def main(
         )
         raise typer.Exit(code=EXIT_ERROR)
 
-    results: list[tuple[str, bool]] = []
-    for scenario_path in scenario_paths:
-        try:
-            passed = run_scenario(
-                scenario_path,
-                output_dir=effective_output_dir,
-                dry_run=dry_run,
-                keep=keep,
-                config=config,
-                log_level=effective_level,
-                refresh_credentials=refresh_credentials,
-                run_id_override=run_id,
-                only_step=only_step,
-            )
-        except (ValueError, RuntimeError) as exc:
-            # Expected, user-actionable setup failures (missing module/terraform
-            # config, Vault unreachable/not logged in) - report cleanly instead of a
-            # full traceback, which is only useful for genuine bugs.
-            configure_logging(log_path=None, level=effective_level)
-            log_final(
-                scenario_path.name, passed=False, failed_step="setup", reason=str(exc)
-            )
-            passed = False
-        results.append((scenario_path.name, passed))
-        if not passed and fail_fast:
-            break
+    results: list[ScenarioResult] = []
+    start = time.monotonic()
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=get_console(),
+    )
+    with progress:
+        task = progress.add_task("Running scenarios", total=len(scenario_paths))
+        for scenario_path in scenario_paths:
+            progress.advance(task)
+            try:
+                result = run_scenario(
+                    scenario_path,
+                    output_dir=effective_output_dir,
+                    dry_run=dry_run,
+                    keep=keep,
+                    config=config,
+                    log_level=effective_level,
+                    refresh_credentials=refresh_credentials,
+                    run_id_override=run_id,
+                    only_step=only_step,
+                )
+            except (ValueError, RuntimeError) as exc:
+                # Expected, user-actionable setup failures (missing module/terraform
+                # config, Vault unreachable/not logged in) - report cleanly instead
+                # of a full traceback, which is only useful for genuine bugs.
+                configure_logging(log_path=None, level=effective_level)
+                log_final(
+                    scenario_path.name,
+                    passed=False,
+                    failed_step="setup",
+                    reason=str(exc),
+                )
+                result = ScenarioResult(
+                    name=scenario_path.name,
+                    passed=False,
+                    failed_step="setup",
+                    reason=str(exc),
+                )
+            results.append(result)
+            if not result.passed and fail_fast:
+                break
 
-    if len(results) > 1:
-        log_summary(results)
+    log_summary(results, elapsed=time.monotonic() - start)
 
-    overall_passed = all(ok for _, ok in results)
+    overall_passed = all(r.passed for r in results)
     raise typer.Exit(code=EXIT_OK if overall_passed else EXIT_ERROR)
 
 

@@ -80,3 +80,61 @@ def test_timeout_kills_the_container_by_name(tmp_path: Path) -> None:
     assert kill_cmd[:2] == [docker_runner.container_engine(), "kill"]
     assert "my-container" in kill_cmd
     fake_process.kill.assert_called_once()
+
+
+def test_image_created_at_returns_formatted_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
+    fake_result = MagicMock(returncode=0, stdout="2026-09-10T12:34:56.789012345Z\n")
+
+    with patch(
+        "erv2_itest.docker_runner.subprocess.run", return_value=fake_result
+    ) as mock_run:
+        built = docker_runner.image_created_at("my-module:prod", engine="docker")
+
+    assert built == "2026-09-10 12:34:56 UTC"
+    inspect_cmd = mock_run.call_args.args[0]
+    assert inspect_cmd == [
+        "docker",
+        "image",
+        "inspect",
+        "--format",
+        "{{.Created}}",
+        "my-module:prod",
+    ]
+
+
+def test_image_created_at_returns_empty_string_on_missing_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
+    fake_result = MagicMock(returncode=1, stdout="")
+
+    with patch("erv2_itest.docker_runner.subprocess.run", return_value=fake_result):
+        built = docker_runner.image_created_at("missing:latest", engine="docker")
+
+    assert built is not None
+    assert not built
+
+
+def test_image_created_at_returns_none_when_engine_not_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: None)
+
+    built = docker_runner.image_created_at("my-module:prod", engine="docker")
+
+    assert built is None
+
+
+def test_image_created_at_returns_raw_string_on_unparseable_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
+    fake_result = MagicMock(returncode=0, stdout="not-a-timestamp\n")
+
+    with patch("erv2_itest.docker_runner.subprocess.run", return_value=fake_result):
+        built = docker_runner.image_created_at("my-module:prod", engine="docker")
+
+    assert built == "not-a-timestamp"

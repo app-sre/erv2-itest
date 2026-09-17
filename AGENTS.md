@@ -48,7 +48,7 @@ permissions, cached indefinitely - see `vault.py`). This never happens during
 erv2-itest/
 ├── pyproject.toml          # deps, hatchling build backend, erv2-itest console script,
 │                            # ruff/mypy/coverage config
-├── Makefile                 # format, test, build, dev-env, pypi targets
+├── Makefile                 # format, test, build, smoketest, demo, dev-env, pypi targets
 ├── Dockerfile               # base -> test -> pypi multi-stage build (Tekton CI)
 ├── .tekton/                  # PR + push PipelineRun definitions
 ├── src/erv2_itest/
@@ -70,6 +70,14 @@ erv2-itest/
 │   ├── base_input.json
 │   ├── scenario_pass.yaml
 │   └── scenario_fail.yaml   # deliberately wrong expectation, proves failures are caught
+├── demo/                     # separate fake module + scenarios for showing off the
+│   │                          # terminal UI to a team (`make demo`) - not used by
+│   │                          # `make test`/pytest at all, see demo/README.md
+│   ├── Dockerfile
+│   ├── fake_module.sh        # adds a SLEEP_SECONDS knob on top of smoketest's module
+│   ├── credentials
+│   ├── base_input.json
+│   └── scenario_*.yaml       # quick pass, slow multi-step, fails-immediately, fails-on-cleanup
 ├── SCENARIO_SCHEMA.md        # full scenario YAML schema reference
 └── tests/                    # this framework's own test suite (pytest)
 ```

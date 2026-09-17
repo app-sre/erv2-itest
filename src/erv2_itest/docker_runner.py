@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import threading
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .logging_utils import get_logger
@@ -18,6 +19,37 @@ logger = get_logger()
 def container_engine() -> str:
     """Pick podman if available, else docker - mirrors this repo's Makefile."""
     return "podman" if shutil.which("podman") else "docker"
+
+
+def image_created_at(image: str, *, engine: str | None = None) -> str | None:
+    """The image's build timestamp, formatted for display - or a sentinel.
+
+    Returns `None` if the container engine itself isn't available (e.g. a
+    dry-run preview in an environment with no Docker/podman at all) - there's
+    nothing useful to report. Returns `""` if the engine IS available but the
+    image can't be found locally: this is the "stale/wrong image" trap the
+    caller needs to surface loudly, not silently swallow, since every step of
+    the scenario is about to fail against a missing image.
+    """
+    resolved_engine = engine or container_engine()
+    if shutil.which(resolved_engine) is None:
+        return None
+
+    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [resolved_engine, "image", "inspect", "--format", "{{.Created}}", image],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ""
+
+    raw = result.stdout.strip()
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw
+    return parsed.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _kill_container(container_name: str, *, engine: str) -> None:

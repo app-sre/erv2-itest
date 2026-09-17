@@ -94,6 +94,8 @@ def test_all_steps_and_cleanup_pass(
 
     assert result.exit_code == EXIT_OK, result.output
     assert "RESULT: PASS" in result.output
+    assert "test results" in result.output
+    assert "1 passed in" in result.output
 
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     [json_path] = logs_dir.glob("*.json")
@@ -118,6 +120,8 @@ def test_failing_step_stops_early_but_cleanup_still_runs(
 
     assert result.exit_code == EXIT_ERROR, result.output
     assert "RESULT: FAIL" in result.output
+    assert "test results" in result.output
+    assert "1 failed in" in result.output
 
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     [json_path] = logs_dir.glob("*.json")
@@ -188,7 +192,8 @@ def test_no_args_auto_discovers_scenarios_dir(
     result = runner.invoke(cli_module.app, ["--no-dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "SUMMARY: 2 passed, 0 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "2 passed in" in result.output
 
 
 def test_discover_scenarios_recurses_into_subdirectories(
@@ -206,7 +211,8 @@ def test_discover_scenarios_recurses_into_subdirectories(
     result = runner.invoke(cli_module.app, [])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "SUMMARY: 2 passed, 0 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "2 passed in" in result.output
 
 
 def test_select_matches_a_subdirectory_name(
@@ -283,7 +289,8 @@ def test_without_fail_fast_runs_every_discovered_scenario(
     result = runner.invoke(cli_module.app, ["--no-dry-run"])
 
     assert result.exit_code == EXIT_ERROR, result.output
-    assert "SUMMARY: 1 passed, 1 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "1 passed, 1 failed in" in result.output
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     assert len(list(logs_dir.glob("*.json"))) == TWO_SCENARIOS
 
@@ -456,7 +463,7 @@ def test_missing_module_and_no_config_default_falls_back_to_cwd_basename_image(
     result = runner.invoke(cli_module.app, [str(scenario_path), "--dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert f"Target:   {tmp_path.name}:prod" in result.output
+    assert f"🎯 Target:   {tmp_path.name}:prod" in result.output
 
 
 def test_missing_base_input_defaults_to_empty_input(
@@ -718,3 +725,98 @@ def test_single_colon_in_select_hints_at_double_colon_syntax(
     assert "No scenario files found" in result.output
     assert "Hint:" in result.output
     assert "'::'" in result.output
+
+
+def test_header_shows_image_build_date(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr(
+        "erv2_itest.cli.image_created_at", lambda *_a, **_kw: "2026-09-10 12:34:56 UTC"
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "🏗️ Built:    2026-09-10 12:34:56 UTC" in result.output
+
+
+def test_header_warns_loudly_when_image_missing_locally(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", lambda *_a, **_kw: "")
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "🏗️ Built:    ⚠ could not inspect image" in result.output
+    assert "'fake:latest'" in result.output
+
+
+def test_header_omits_build_line_when_engine_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", lambda *_a, **_kw: None)
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Built:" not in result.output
+
+
+def test_header_shows_build_date_in_dry_run_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    monkeypatch.setattr(
+        "erv2_itest.cli.image_created_at", lambda *_a, **_kw: "2026-09-10 12:34:56 UTC"
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "🏗️ Built:    2026-09-10 12:34:56 UTC" in result.output
+
+
+def test_header_has_no_build_line_for_terraform_scenarios(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def _fail_if_called(*_a: object, **_kw: object) -> str:
+        raise AssertionError("image_created_at must not be called for terraform mode")
+
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", _fail_if_called)
+    scenario_path = _write_scenario(
+        tmp_path,
+        body="""
+name: unit-test-terraform-scenario
+mode: terraform
+terraform:
+  source: modules/my-module
+steps:
+  - name: apply
+    expect:
+      exit_code: 0
+""",
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_ERROR, result.output
+    assert "Built:" not in result.output

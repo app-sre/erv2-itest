@@ -9,20 +9,57 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+from rich.console import Console
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 LOGGER_NAME = "erv2_itest"
 
+_console = Console()
+
 
 def get_logger() -> logging.Logger:
     """The shared logger used across all erv2_itest modules."""
     return logging.getLogger(LOGGER_NAME)
+
+
+def get_console() -> Console:
+    """The shared Rich console for decorative, console-only output (never logged)."""
+    return _console
+
+
+class ConsoleHandler(logging.Handler):
+    """Writes each log record as one unwrapped line to the shared Rich console.
+
+    Deliberately not `rich.logging.RichHandler`: its `LogRender` grid `Table`
+    forces `overflow="fold"` on the message column regardless of the message
+    `Text`'s own wrap settings, so a single log line silently splits across
+    multiple printed lines depending on console width - breaking any
+    substring match (including our own tests) that spans the wrap point.
+    `console.print(..., soft_wrap=True)` is the reliable way to disable that,
+    and none of RichHandler's other features (timestamps, levels, tracebacks)
+    are used here anyway.
+    """
+
+    def __init__(self, console: Console) -> None:
+        super().__init__()
+        self._console = console
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._console.print(
+                self.format(record), soft_wrap=True, markup=False, highlight=False
+            )
+        except Exception:  # ruff: ignore[blind-except]
+            # Matches logging.Handler's own documented emit() contract (see e.g.
+            # the stdlib's StreamHandler.emit()): one bad log call must not crash
+            # the whole run, so route it through handleError() instead.
+            self.handleError(record)
 
 
 def configure_logging(
@@ -33,15 +70,13 @@ def configure_logging(
     logger.setLevel(level)
     logger.handlers.clear()
 
-    formatter = logging.Formatter("%(message)s")
-
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+    console_handler = ConsoleHandler(get_console())
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(console_handler)
 
     if log_path is not None:
         file_handler = logging.FileHandler(log_path, encoding="utf-8")
-        file_handler.setFormatter(formatter)
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(file_handler)
 
     return logger

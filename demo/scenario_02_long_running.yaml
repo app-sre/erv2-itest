@@ -1,0 +1,44 @@
+# A slow, multi-iteration reconcile (~10s total via SLEEP_SECONDS) - the one to
+# run when you want the team to actually watch the live progress bar and
+# streamed docker output move, instead of everything flashing by instantly.
+name: demo-long-running-reconcile
+description: several slow iterations before converging
+module:
+  image: erv2it-demo:latest
+  credentials_file: demo/credentials
+  extra_env:
+    SLEEP_SECONDS: "2"
+    CONVERGE_AFTER: "4"
+base_input: demo/base_input.json
+steps:
+  - name: apply (attempt 1)
+    action: Apply
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: apply (attempt 2)
+    action: Apply
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: apply (attempt 3)
+    action: Apply
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: apply settles
+    action: Apply
+    expect:
+      exit_code: 0
+      log_contains:
+        - "No changes."
+cleanup:
+  name: destroy
+  action: Destroy
+  expect:
+    exit_code: 0
+    log_contains:
+      - "Destroy complete!"
