@@ -135,6 +135,7 @@ def _run_step_with_fake_container(
     *,
     exit_code: int,
     output: str,
+    run_id: str = "erv2it-test",
 ) -> tuple[bool, dict[str, Any], str, int]:
     def _fake_run_container(**_: object) -> tuple[int, str]:
         return exit_code, output
@@ -152,6 +153,7 @@ def _run_step_with_fake_container(
         current_input={"data": {}},
         work_dir=tmp_path,
         container_name="erv2it-test-apply",
+        run_id=run_id,
     )
 
 
@@ -264,6 +266,40 @@ def test_run_step_merges_step_input_into_data(
     )
 
     assert merged["data"] == {"engine_version": "7.1"}
+
+
+def test_run_step_substitutes_run_id_in_step_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A step's own `input:` values must get the same {{run_id}} treatment as base_input.
+
+    A real scenario broke in production because a step overrode a value like
+    `parameter_group_name: "{{run_id}}-custom-pg"` and the literal, unsubstituted
+    placeholder text was sent straight to AWS - which rejected it (curly braces
+    aren't valid identifier characters). Only `base_input`'s *file text* was ever
+    substituted; step.input, being an already-parsed dict merged in afterward,
+    was never touched.
+    """
+    step = _make_step(
+        input={
+            "parameter_group_name": "{{run_id}}-custom-pg",
+            "nested": {"identifier": "{{run_id}}-child"},
+            "tags": ["{{run_id}}-a", "{{run_id}}-b"],
+            "replica_count": 2,
+        },
+        expect={"exit_code": 0},
+    )
+
+    _ok, merged, _reason, _exit_code = _run_step_with_fake_container(
+        monkeypatch, tmp_path, step, exit_code=0, output="", run_id="erv2it-abc123"
+    )
+
+    assert merged["data"] == {
+        "parameter_group_name": "erv2it-abc123-custom-pg",
+        "nested": {"identifier": "erv2it-abc123-child"},
+        "tags": ["erv2it-abc123-a", "erv2it-abc123-b"],
+        "replica_count": 2,
+    }
 
 
 def test_run_step_writes_merged_input_json_to_work_dir(
