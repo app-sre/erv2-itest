@@ -1,6 +1,6 @@
 <div align="center">
 
-```
+```text
 ═════════════════════════════════════════════════════
 
    🧪  E R V 2 - I T E S T  🐳
@@ -30,6 +30,54 @@ reconcile loop actually did the right thing, and no credential files to hand-man
 it fetches AWS credentials from Vault on demand and falls back to sensible defaults
 (image name, config, output paths) so a module usually needs little to no setup to get
 its first scenario running.
+
+## 🎬 Demo
+
+```text
+uv run erv2-itest --scenarios-dir demo -k quick --no-dry-run --output-dir .erv2-itests-demo
+────────────────────────────────── 🚀 demo-quick-win ──────────────────────────────────
+🧪 Scenario: demo-quick-win
+🆔 Run ID:   erv2it-20260917074749-0967
+⚙️ Mode:     erv2
+🎯 Target:   erv2it-demo:latest
+🏗️ Built:    2026-09-17 07:18:47 UTC
+📄 Log:      .erv2-itests-demo/logs/erv2it-20260917074749-0967.log
+📊 Summary:  .erv2-itests-demo/logs/erv2it-20260917074749-0967.json
+
+  ── 👣 Step: apply ──
+    $ docker run --rm --name erv2it-20260917074749-0967-apply --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967/input.json,target=/inputs/input.json --mount type=bind,source=demo/credentials,target=/credentials --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967,target=/work -e DRY_RUN=False -e ACTION=Apply erv2it-demo:latest
+    ACTION=Apply DRY_RUN=False
+    loop count: 1
+    still in progress
+  ✅ apply
+
+  ── 👣 Step: apply settles ──
+    $ docker run --rm --name erv2it-20260917074749-0967-apply-settles --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967/input.json,target=/inputs/input.json --mount type=bind,source=demo/credentials,target=/credentials --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967,target=/work -e DRY_RUN=False -e ACTION=Apply erv2it-demo:latest
+    ACTION=Apply DRY_RUN=False
+    loop count: 2
+    No changes. Your infrastructure matches the configuration.
+  ✅ apply settles
+
+  ── 👣 Step: destroy ──
+    $ docker run --rm --name erv2it-20260917074749-0967-destroy --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967/input.json,target=/inputs/input.json --mount type=bind,source=demo/credentials,target=/credentials --mount type=bind,source=.erv2-itests-demo/runs/erv2it-20260917074749-0967,target=/work -e DRY_RUN=False -e ACTION=Destroy erv2it-demo:latest
+    ACTION=Destroy DRY_RUN=False
+    Destroy complete! Resources: 0 added, 0 changed, 1 destroyed.
+  ✅ destroy
+
+🎉 RESULT: PASS (demo-quick-win)
+────────────────────────────────── 1 passed in 0.73s ──────────────────────────────────
+            🏁 test results
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┓
+┃ Scenario / Step ┃  Status   ┃ Reason ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━┩
+│ demo-quick-win  │ ✅ PASSED │        │
+│   apply         │ ✅ PASSED │        │
+│   apply settles │ ✅ PASSED │        │
+│   destroy       │ ✅ PASSED │        │
+└─────────────────┴───────────┴────────┘
+
+
+```
 
 ## 🌟 Features
 
@@ -145,35 +193,35 @@ tf_state_account: app-sre/creds/terraform/ter-int-dev/config
 # repo omit an identical module:/terraform:/base_input: block - see SCENARIO_SCHEMA.md.
 ```
 
-| Field                | Default                                      | Description                                                                         |
-| -------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `output_dir`         | `.erv2-itests`                               | Where run logs, JSON summaries, and the Vault credentials cache are written.        |
+| Field                | Default                                      | Description                                                                                                             |
+| -------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `output_dir`         | `.erv2-itests`                               | Where run logs, JSON summaries, and the Vault credentials cache are written.                                            |
 | `scenarios_dir`      | `integration-tests`                          | Directory auto-discovered (recursively, so subdirectories are fine) when no scenario path is given on the command line. |
-| `default_mode`       | `erv2`                                       | Fallback for a scenario that omits its own `mode:` (`erv2` or `terraform`).         |
-| `default_module`     | *(none)*                                     | Fallback `module:` block for scenarios that omit one - see `SCENARIO_SCHEMA.md`.    |
-| `default_terraform`  | *(none)*                                     | Fallback `terraform:` block for scenarios that omit one.                            |
-| `default_base_input` | *(none)*                                     | Fallback `base_input:` path for scenarios that omit one.                            |
-| `log_level`          | `INFO`                                       | Base log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`); `-v`/`--verbose` forces `DEBUG`. |
-| `target_account`     | `app-sre/creds/terraform/ter-int-dev/config` | Vault KVv2 path used for the `[default]` AWS profile.                               |
-| `tf_state_account`   | `app-sre/creds/terraform/ter-int-dev/config` | Vault KVv2 path used for the `[external-resources-state]` AWS profile.              |
+| `default_mode`       | `erv2`                                       | Fallback for a scenario that omits its own `mode:` (`erv2` or `terraform`).                                             |
+| `default_module`     | *(none)*                                     | Fallback `module:` block for scenarios that omit one - see `SCENARIO_SCHEMA.md`.                                        |
+| `default_terraform`  | *(none)*                                     | Fallback `terraform:` block for scenarios that omit one.                                                                |
+| `default_base_input` | *(none)*                                     | Fallback `base_input:` path for scenarios that omit one.                                                                |
+| `log_level`          | `INFO`                                       | Base log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`); `-v`/`--verbose` forces `DEBUG`.                                     |
+| `target_account`     | `app-sre/creds/terraform/ter-int-dev/config` | Vault KVv2 path used for the `[default]` AWS profile.                                                                   |
+| `tf_state_account`   | `app-sre/creds/terraform/ter-int-dev/config` | Vault KVv2 path used for the `[external-resources-state]` AWS profile.                                                  |
 
 Any field can also be set via an `ERV2_ITEST_<FIELD>` environment variable, e.g.
 `ERV2_ITEST_OUTPUT_DIR=/tmp/out`.
 
 ### CLI flags
 
-| Flag                         | Description                                                                |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `--output-dir PATH`          | Override `output_dir` for this run.                                        |
-| `--scenarios-dir PATH`       | Override `scenarios_dir` for this run.                                     |
+| Flag                         | Description                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--output-dir PATH`          | Override `output_dir` for this run.                                                                                                        |
+| `--scenarios-dir PATH`       | Override `scenarios_dir` for this run.                                                                                                     |
 | `-k`, `--select TEXT`        | Filter by filename substring; add `::step-name` to run just one step (matched against `steps` and `cleanup`) instead of the full sequence. |
-| `-x`, `--fail-fast`          | Stop after the first failing scenario instead of running all of them.      |
-| `-v`, `--verbose`            | Enable `DEBUG`-level logging.                                              |
-| `--log-level LEVEL`          | Explicit log level, overriding `log_level`.                                |
-| `--refresh-credentials`      | Re-fetch Vault-generated credentials instead of reusing the cached file.   |
-| `--run-id TEXT`              | Reuse a specific run_id instead of generating a fresh one. Only valid with exactly one scenario. |
-| `--keep`                     | Skip cleanup (`Destroy`) and keep the run's working directory.             |
-| `--dry-run` / `--no-dry-run` | Preview only vs. actually run (the default).                               |
+| `-x`, `--fail-fast`          | Stop after the first failing scenario instead of running all of them.                                                                      |
+| `-v`, `--verbose`            | Enable `DEBUG`-level logging.                                                                                                              |
+| `--log-level LEVEL`          | Explicit log level, overriding `log_level`.                                                                                                |
+| `--refresh-credentials`      | Re-fetch Vault-generated credentials instead of reusing the cached file.                                                                   |
+| `--run-id TEXT`              | Reuse a specific run_id instead of generating a fresh one. Only valid with exactly one scenario.                                           |
+| `--keep`                     | Skip cleanup (`Destroy`) and keep the run's working directory.                                                                             |
+| `--dry-run` / `--no-dry-run` | Preview only vs. actually run (the default).                                                                                               |
 
 Run `erv2-itest --help` for the always-up-to-date list.
 

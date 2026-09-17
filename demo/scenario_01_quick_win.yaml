@@ -1,0 +1,27 @@
+# The common case: a fast scenario that converges and cleans up without drama.
+name: demo-quick-win
+description: a fast, all-green scenario - the common case
+module:
+  image: erv2it-demo:latest
+  credentials_file: demo/credentials
+base_input: demo/base_input.json
+steps:
+  - name: apply
+    action: Apply
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: apply settles
+    action: Apply
+    expect:
+      exit_code: 0
+      log_contains:
+        - "No changes."
+cleanup:
+  name: destroy
+  action: Destroy
+  expect:
+    exit_code: 0
+    log_contains:
+      - "Destroy complete!"

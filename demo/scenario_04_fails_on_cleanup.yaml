@@ -1,0 +1,27 @@
+# Every step passes, but cleanup deliberately expects the wrong exit code -
+# shows a scenario with a mix of ✅ PASSED and ❌ FAILED rows in one table
+# entry, and proves a cleanup failure fails the whole scenario.
+name: demo-fails-on-cleanup
+description: steps pass but cleanup expects the wrong exit code
+module:
+  image: erv2it-demo:latest
+  credentials_file: demo/credentials
+base_input: demo/base_input.json
+steps:
+  - name: apply
+    action: Apply
+    expect:
+      exit_code: 1
+      log_contains:
+        - "still in progress"
+  - name: apply settles
+    action: Apply
+    expect:
+      exit_code: 0
+      log_contains:
+        - "No changes."
+cleanup:
+  name: destroy (wrongly expects failure)
+  action: Destroy
+  expect:
+    exit_code: 1
