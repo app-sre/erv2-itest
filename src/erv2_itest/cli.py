@@ -108,6 +108,32 @@ def resolve_base_input(base_input: Path, run_id: str) -> dict[str, Any]:
     return result
 
 
+JSONValue = dict[str, Any] | list[Any] | str | int | float | bool | None
+
+
+def substitute_run_id(mapping: dict[str, Any], run_id: str) -> dict[str, Any]:
+    """Recursively replace {{run_id}} in a step's own `input:` values.
+
+    `base_input` gets this treatment "for free" since it's substituted as raw
+    text before being parsed as JSON, but a step's `input:` is already a parsed
+    dict from the scenario YAML by the time it reaches us - so the same
+    placeholder has to be walked and replaced structurally instead.
+    """
+    return {
+        key: _substitute_run_id_value(value, run_id) for key, value in mapping.items()
+    }
+
+
+def _substitute_run_id_value(value: JSONValue, run_id: str) -> JSONValue:
+    if isinstance(value, str):
+        return value.replace("{{run_id}}", run_id)
+    if isinstance(value, dict):
+        return substitute_run_id(value, run_id)
+    if isinstance(value, list):
+        return [_substitute_run_id_value(item, run_id) for item in value]
+    return value
+
+
 def discover_scenarios(scenarios_dir: Path, *, select: str | None) -> list[Path]:
     """Find *.yaml/*.yml scenario files under scenarios_dir, sorted, optionally filtered.
 
@@ -251,10 +277,12 @@ def run_step(
     current_input: dict[str, Any],
     work_dir: Path,
     container_name: str,
+    run_id: str,
 ) -> tuple[bool, dict[str, Any], str, int]:
     """Merge overrides, run the step, check expectations against the result."""
+    substituted_input = substitute_run_id(step.input, run_id)
     merged = dict(current_input)
-    merged["data"] = {**merged.get("data", {}), **step.input}
+    merged["data"] = {**merged.get("data", {}), **substituted_input}
 
     input_path = work_dir / "input.json"
     input_path.write_text(json.dumps(merged), encoding="utf-8")
@@ -357,6 +385,7 @@ def run_and_record(
         current_input=current_input,
         work_dir=work_dir,
         container_name=container_name_for(run_id, step.name),
+        run_id=run_id,
     )
     log_step(step.name, passed=ok, reason=reason)
     record.steps.append(

@@ -124,7 +124,16 @@ etc. - so a run can never collide with an existing, unrelated resource:
 
 Each step's own `input` is then shallow-merged into the resulting `data` key (`step.input`
 keys override same-named keys already in `data`; nothing else in the base input is
-touched).
+touched). `{{run_id}}` is substituted in `step.input` too - including inside nested
+objects and lists - so a step-specific value that needs to be unique per run (e.g. a
+secondary resource's name) can use it just like `base_input` can:
+
+```yaml
+steps:
+  - name: upgrade to valkey 8.0 (new parameter group family + name)
+    input:
+      parameter_group_name: "{{run_id}}-custom-pg-v8-valkey8"
+```
 
 ## Complete example
 
