@@ -35,6 +35,7 @@ import yaml
 from external_resources_io.exit_status import EXIT_ERROR, EXIT_OK
 
 from .config import ErvItestConfig
+from .docker_runner import image_created_at
 from .logging_utils import RunRecord, StepRecord, configure_logging, get_logger, now_iso
 from .models import Mode, ModuleConfig, Scenario, ScenarioStep, TerraformModuleConfig
 from .report import ScenarioResult, StepResult, log_final, log_step, log_summary
@@ -271,6 +272,29 @@ def container_name_for(run_id: str, step_name: str) -> str:
     return f"{run_id}-{slug}"[:63]
 
 
+def log_image_built(module: ModuleConfig | TerraformModuleConfig) -> None:
+    """Log the module image's build date, or a loud warning if it's missing locally.
+
+    Terraform scenarios have no image, so this is a no-op for those. A missing
+    image means every step is about to fail - surface it in the header instead
+    of letting a human discover it three steps deep in a container-run log.
+    """
+    if not isinstance(module, ModuleConfig):
+        return
+    built = image_created_at(module.image, engine=module.container_engine)
+    if built is None:
+        return
+    if not built:
+        logger.info(
+            "Built:    ⚠ could not inspect image %r - not pulled/built locally, "
+            "or the container engine isn't reachable. Every step below will "
+            "likely fail.",
+            module.image,
+        )
+    else:
+        logger.info("Built:    %s", built)
+
+
 def log_dry_preview(scenario: Scenario) -> None:
     """Log what would run, without touching Docker/AWS."""
     logger.info(
@@ -375,6 +399,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
         logger.info("Run ID:   %s", run_id)
         logger.info("Mode:     %s", effective_mode)
         logger.info("Target:   %s", target)
+        log_image_built(module)
         if target_step is not None:
             logger.info(
                 "\n--dry-run: nothing will run against Docker/AWS. Would "
@@ -397,6 +422,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     logger.info("Run ID:   %s", run_id)
     logger.info("Mode:     %s", effective_mode)
     logger.info("Target:   %s", target)
+    log_image_built(module)
     if target_step is not None:
         logger.info("Step:     %s", target_step.name)
     logger.info("Log:      %s", log_path)

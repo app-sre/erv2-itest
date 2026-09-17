@@ -725,3 +725,98 @@ def test_single_colon_in_select_hints_at_double_colon_syntax(
     assert "No scenario files found" in result.output
     assert "Hint:" in result.output
     assert "'::'" in result.output
+
+
+def test_header_shows_image_build_date(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr(
+        "erv2_itest.cli.image_created_at", lambda *_a, **_kw: "2026-09-10 12:34:56 UTC"
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Built:    2026-09-10 12:34:56 UTC" in result.output
+
+
+def test_header_warns_loudly_when_image_missing_locally(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", lambda *_a, **_kw: "")
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Built:    ⚠ could not inspect image" in result.output
+    assert "'fake:latest'" in result.output
+
+
+def test_header_omits_build_line_when_engine_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    _queue_fake_run_container(
+        monkeypatch, [(0, "ok"), (0, "ok"), (0, "Destroy complete!")]
+    )
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", lambda *_a, **_kw: None)
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Built:" not in result.output
+
+
+def test_header_shows_build_date_in_dry_run_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scenario_path = _write_scenario(tmp_path)
+    monkeypatch.setattr(
+        "erv2_itest.cli.image_created_at", lambda *_a, **_kw: "2026-09-10 12:34:56 UTC"
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--dry-run"])
+
+    assert result.exit_code == EXIT_OK, result.output
+    assert "Built:    2026-09-10 12:34:56 UTC" in result.output
+
+
+def test_header_has_no_build_line_for_terraform_scenarios(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def _fail_if_called(*_a: object, **_kw: object) -> str:
+        raise AssertionError("image_created_at must not be called for terraform mode")
+
+    monkeypatch.setattr("erv2_itest.cli.image_created_at", _fail_if_called)
+    scenario_path = _write_scenario(
+        tmp_path,
+        body="""
+name: unit-test-terraform-scenario
+mode: terraform
+terraform:
+  source: modules/my-module
+steps:
+  - name: apply
+    expect:
+      exit_code: 0
+""",
+    )
+
+    result = runner.invoke(cli_module.app, [str(scenario_path), "--no-dry-run"])
+
+    assert result.exit_code == EXIT_ERROR, result.output
+    assert "Built:" not in result.output
