@@ -94,6 +94,8 @@ def test_all_steps_and_cleanup_pass(
 
     assert result.exit_code == EXIT_OK, result.output
     assert "RESULT: PASS" in result.output
+    assert "test results" in result.output
+    assert "1 passed in" in result.output
 
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     [json_path] = logs_dir.glob("*.json")
@@ -118,6 +120,8 @@ def test_failing_step_stops_early_but_cleanup_still_runs(
 
     assert result.exit_code == EXIT_ERROR, result.output
     assert "RESULT: FAIL" in result.output
+    assert "test results" in result.output
+    assert "1 failed in" in result.output
 
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     [json_path] = logs_dir.glob("*.json")
@@ -188,7 +192,8 @@ def test_no_args_auto_discovers_scenarios_dir(
     result = runner.invoke(cli_module.app, ["--no-dry-run"])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "SUMMARY: 2 passed, 0 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "2 passed in" in result.output
 
 
 def test_discover_scenarios_recurses_into_subdirectories(
@@ -206,7 +211,8 @@ def test_discover_scenarios_recurses_into_subdirectories(
     result = runner.invoke(cli_module.app, [])
 
     assert result.exit_code == EXIT_OK, result.output
-    assert "SUMMARY: 2 passed, 0 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "2 passed in" in result.output
 
 
 def test_select_matches_a_subdirectory_name(
@@ -283,7 +289,8 @@ def test_without_fail_fast_runs_every_discovered_scenario(
     result = runner.invoke(cli_module.app, ["--no-dry-run"])
 
     assert result.exit_code == EXIT_ERROR, result.output
-    assert "SUMMARY: 1 passed, 1 failed (of 2)" in result.output
+    assert "test results" in result.output
+    assert "1 passed, 1 failed in" in result.output
     logs_dir = tmp_path / ".erv2-itests" / "logs"
     assert len(list(logs_dir.glob("*.json"))) == TWO_SCENARIOS
 

@@ -25,6 +25,7 @@ import json
 import logging
 import secrets
 import shutil
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -36,7 +37,7 @@ from external_resources_io.exit_status import EXIT_ERROR, EXIT_OK
 from .config import ErvItestConfig
 from .logging_utils import RunRecord, StepRecord, configure_logging, get_logger, now_iso
 from .models import Mode, ModuleConfig, Scenario, ScenarioStep, TerraformModuleConfig
-from .report import log_final, log_step, log_summary
+from .report import ScenarioResult, StepResult, log_final, log_step, log_summary
 from .runner import Runner, get_runner
 from .vault import get_or_create_credentials_file
 
@@ -335,8 +336,8 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     refresh_credentials: bool,
     run_id_override: str | None = None,
     only_step: str | None = None,
-) -> bool:
-    """Run (or preview) a single scenario file. Returns True if it passed.
+) -> ScenarioResult:
+    """Run (or preview) a single scenario file. Returns its pass/fail result.
 
     `only_step`, if given, runs just that one step (matched by name against both
     `steps` and `cleanup`) instead of the full sequence - e.g. to manually re-run
@@ -384,7 +385,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
             )
         else:
             log_dry_preview(parsed_scenario)
-        return True
+        return ScenarioResult(name=parsed_scenario.name, passed=True)
 
     logs_dir = output_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -414,6 +415,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
     passed = True
     failure_reason = ""
     failed_step_name = ""
+    step_results: list[StepResult] = []
 
     steps_to_run = [target_step] if target_step is not None else parsed_scenario.steps
     for step in steps_to_run:
@@ -426,6 +428,7 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
             run_id=run_id,
             record=record,
         )
+        step_results.append(StepResult(name=step.name, passed=ok, reason=reason))
         if not ok:
             passed, failure_reason, failed_step_name = False, reason, step.name
             break
@@ -440,6 +443,9 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
                 work_dir=work_dir,
                 run_id=run_id,
                 record=record,
+            )
+            step_results.append(
+                StepResult(name=parsed_scenario.cleanup.name, passed=ok, reason=reason)
             )
             if not ok and passed:
                 passed, failure_reason, failed_step_name = (
@@ -465,7 +471,13 @@ def run_scenario(  # ruff: ignore[too-many-locals,too-many-statements,complex-st
         failed_step=failed_step_name,
         reason=failure_reason,
     )
-    return passed
+    return ScenarioResult(
+        name=parsed_scenario.name,
+        passed=passed,
+        failed_step=failed_step_name,
+        reason=failure_reason,
+        steps=tuple(step_results),
+    )
 
 
 app = typer.Typer()
@@ -589,10 +601,11 @@ def main(
         )
         raise typer.Exit(code=EXIT_ERROR)
 
-    results: list[tuple[str, bool]] = []
+    results: list[ScenarioResult] = []
+    start = time.monotonic()
     for scenario_path in scenario_paths:
         try:
-            passed = run_scenario(
+            result = run_scenario(
                 scenario_path,
                 output_dir=effective_output_dir,
                 dry_run=dry_run,
@@ -611,15 +624,19 @@ def main(
             log_final(
                 scenario_path.name, passed=False, failed_step="setup", reason=str(exc)
             )
-            passed = False
-        results.append((scenario_path.name, passed))
-        if not passed and fail_fast:
+            result = ScenarioResult(
+                name=scenario_path.name,
+                passed=False,
+                failed_step="setup",
+                reason=str(exc),
+            )
+        results.append(result)
+        if not result.passed and fail_fast:
             break
 
-    if len(results) > 1:
-        log_summary(results)
+    log_summary(results, elapsed=time.monotonic() - start)
 
-    overall_passed = all(ok for _, ok in results)
+    overall_passed = all(r.passed for r in results)
     raise typer.Exit(code=EXIT_OK if overall_passed else EXIT_ERROR)
 
 
