@@ -82,7 +82,10 @@ def test_timeout_kills_the_container_by_name(tmp_path: Path) -> None:
     fake_process.kill.assert_called_once()
 
 
-def test_image_created_at_returns_formatted_timestamp() -> None:
+def test_image_created_at_returns_formatted_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
     fake_result = MagicMock(returncode=0, stdout="2026-09-10T12:34:56.789012345Z\n")
 
     with patch(
@@ -102,7 +105,10 @@ def test_image_created_at_returns_formatted_timestamp() -> None:
     ]
 
 
-def test_image_created_at_returns_empty_string_on_missing_image() -> None:
+def test_image_created_at_returns_empty_string_on_missing_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
     fake_result = MagicMock(returncode=1, stdout="")
 
     with patch("erv2_itest.docker_runner.subprocess.run", return_value=fake_result):
@@ -122,7 +128,10 @@ def test_image_created_at_returns_none_when_engine_not_on_path(
     assert built is None
 
 
-def test_image_created_at_returns_raw_string_on_unparseable_timestamp() -> None:
+def test_image_created_at_returns_raw_string_on_unparseable_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker_runner.shutil, "which", lambda _name: "/usr/bin/docker")
     fake_result = MagicMock(returncode=0, stdout="not-a-timestamp\n")
 
     with patch("erv2_itest.docker_runner.subprocess.run", return_value=fake_result):
