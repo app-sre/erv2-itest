@@ -27,7 +27,7 @@ issues = "https://github.com/app-sre/erv2-itest/issues"
 
 [dependency-groups]
 dev = [
-    "ruff==0.16.7",
+    "ruff==0.16.8",
     "mypy==2.3.1",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
