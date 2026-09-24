@@ -71,10 +71,10 @@ RDS proxy's [`RdsProxyData`](https://github.com/app-sre/er-aws-rds-proxy/blob/ma
 requires:
 
 ```python
-db_instance_identifier: str        # REQUIRED — the RDS instance to attach to
-auth: Sequence[Auth]               # REQUIRED — auth[].secret_name for SECRETS auth_scheme
+db_instance_identifier: str  # REQUIRED — the RDS instance to attach to
+auth: Sequence[Auth]  # REQUIRED — auth[].secret_name for SECRETS auth_scheme
 vpc_security_group_ids: list[str]  # REQUIRED
-vpc_subnet_ids: list[str]          # REQUIRED
+vpc_subnet_ids: list[str]  # REQUIRED
 engine_family: str = "POSTGRESQL"
 ```
 
@@ -140,11 +140,11 @@ the secret entirely for test purposes. Flagged as an open question in §6.
 `MskConnectData` requires:
 
 ```python
-msk_cluster: str                        # cluster name (for IAM policy ARN construction)
-kafka_cluster_bootstrap_servers: str    # comma-separated host:port
-vpc: VpcConfig                          # subnets + security_groups
-service_execution_role: str             # IAM role name (separate resource)
-custom_plugin: CustomPlugin             # S3 bucket/key of the connector jar
+msk_cluster: str  # cluster name (for IAM policy ARN construction)
+kafka_cluster_bootstrap_servers: str  # comma-separated host:port
+vpc: VpcConfig  # subnets + security_groups
+service_execution_role: str  # IAM role name (separate resource)
+custom_plugin: CustomPlugin  # S3 bucket/key of the connector jar
 connector_configuration: dict[str, str]
 ```
 
