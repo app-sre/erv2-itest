@@ -63,20 +63,6 @@ Why reference the dependency's *own* scenario instead of writing a fresh one loc
 - It's git-native: pin to a branch, tag, or commit SHA for reproducibility, same as any
   other dependency version pin.
 
-### Why not a generic "fixture" block instead of referencing scenarios?
-
-An earlier draft of this proposal considered generic fixtures (a mini-scenario written
-inline, or a shared fixture library). That doesn't fit this repo's own principle from
-`AGENTS.md`:
-
-> This is a **standalone, generic** project: it knows nothing about any specific ERv2
-> module's schema... Scenario YAMLs and base-input templates... live in the *consuming*
-> module's own repo.
-
-`depends_on` keeps that property. erv2-itest still knows nothing about RDS's or MSK's
-schema — it just runs *another already-defined scenario* the same way it runs the main
-one, and moves bytes (Terraform outputs) between them.
-
 ## 3. Concrete examples
 
 ### 3a. `er-aws-rds-proxy` depending on `er-aws-rds`
