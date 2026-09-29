@@ -139,6 +139,18 @@ values only. References between fixtures establish dependency order — `require
 needed when no such reference exists. Aliases are local to their declaring scenario,
 including nested scenarios.
 
+### Terraform variables
+
+A Terraform fixture's effective `input` (base input, if any, merged with the fixture's
+own `input` overrides and any `{{...}}` substitutions, above) is written as a single
+generated `<fixture work_dir>/generated.auto.tfvars.json`, which Terraform auto-loads —
+the same "one file carries the whole input" convention `mode: erv2` already uses for
+`/inputs/input.json` (`docker_runner.py`), rather than per-key `-var` flags. Every
+top-level key in `input` must match a declared `variable` block in the source's `.tf`
+files, and every required variable without a default must have a corresponding key —
+checked with `terraform validate` against the generated file before `apply` runs, same
+fail-fast-before-touching-AWS principle as reference resolution (§5, step 1).
+
 ## 3. Concrete examples
 
 ### 3a. `er-aws-rds-proxy` depending on `er-aws-rds`, plus a Secrets Manager fixture
@@ -442,9 +454,59 @@ fixtures:                        # optional, map[str, Fixture], default {}
    the overall invocation still fails. Failed session setup is not silently retried.
 
 Implement the existing Terraform runner for both standalone scenarios and fixtures, using
-isolated local state, explicit variables, the existing credential-resolution approach,
-and the normal step timeouts/assertions. Stop the actual container or Terraform process
-before teardown after an interruption, same as today.
+isolated local state, explicit variables (§2, Terraform variables), and the normal step
+timeouts/assertions.
+
+### Cleanup and crash recovery
+
+Raised in review ([discussion](https://github.com/app-sre/erv2-itest/pull/14#discussion_r4126064807)):
+this isn't a new guarantee invented for fixtures — it's the same mechanism standalone
+scenarios already rely on today, applied uniformly to every fixture instance too.
+
+What already exists, for any scenario, fixture or not:
+
+- **Ordinary step failure**: `run_scenario()` (`cli.py`) always proceeds to the
+  scenario's own `cleanup` after a failed step, unless `--keep` was given — this is
+  unconditional today and stays unconditional for fixtures.
+- **Timeout or Ctrl-C mid-step**: `docker_runner.py` explicitly runs `docker`/`podman
+  kill <container_name>` on both a step timeout and `KeyboardInterrupt`, not just
+  killing the local CLI client — this is what stops a real AWS-mutating operation from
+  continuing unattended after an interrupt (`tests/test_docker_runner.py` is the
+  regression coverage for this). The Terraform runner must apply the same discipline:
+  interrupting a fixture's `terraform apply` kills the actual `terraform` process, not
+  just erv2-itest's own process tree.
+- **What that does NOT do**: killing the in-flight process stops it from doing *more*
+  damage, but the exception unwinds out of `run_scenario()` before its automatic
+  `cleanup` call is reached — interrupted resources are not auto-destroyed. Recovery is
+  a deliberate, manual step today (see `AGENTS.md`): re-invoke with
+  `--run-id <that run_id> -k "::<cleanup step name>"` against the same, already-known
+  run_id, so `{{run_id}}`-derived resource names still resolve to the real orphaned
+  resources.
+
+Fixtures extend that same recovery path instead of replacing it:
+
+- Register each fixture's run_id, resolved source revision, and (for Terraform) its
+  state file path *before* that fixture's own setup starts (§5, step 2) — the same
+  "durable record survives a crash" idea behind today's `.erv2-itests/runs/<run_id>/`
+  and `.erv2-itests/logs/<run_id>.json`.
+- The proposed `--cleanup-session <id>` is the fixture-aware generalization of today's
+  manual `--run-id ... -k '::cleanup'`: it walks the persisted fixture graph for that
+  session and destroys each fixture, in reverse dependency order, against its own
+  recorded state — without regenerating a fresh plan, and without re-running setup.
+- **Terraform-specific consistency**: unlike a single docker step (atomic from
+  erv2-itest's point of view — kill it, and nothing partial remains beyond whatever AWS
+  itself already committed), `terraform apply` can be interrupted mid-way through
+  creating several resources, leaving local state that is neither empty nor complete. A
+  fixture's Terraform state must therefore live at a fixed path under its own persisted
+  work_dir — never a temp directory cleaned up independently of the resources it
+  describes — and both automatic cleanup and `--cleanup-session` recovery must run
+  `terraform destroy` against that *exact* state, never a fresh/empty one, so a
+  partially-applied fixture's already-created resources are still targeted by the IDs
+  Terraform actually recorded, not silently skipped because setup "never finished."
+
+Persist source revisions, instance IDs, bindings, inputs, and state locations to support
+`--cleanup-session <id>`; recovery never repeats setup. Protect retained secret-bearing
+files and remove them after successful teardown.
 
 Flag interactions:
 
@@ -456,10 +518,6 @@ Flag interactions:
 - `--run-id`: shared with every fixture, so re-running cleanup against a crashed run
   tears down fixture resources too. `--run-id ... -k '::cleanup'` remains target-only and
   preserves shared prerequisites.
-
-Persist source revisions, instance IDs, bindings, inputs, and state locations, to support
-a proposed `--cleanup-session <id>` recovery command; recovery never repeats setup.
-Protect retained secret-bearing files and remove them after successful teardown.
 
 ## 6. Open questions / future work
 
