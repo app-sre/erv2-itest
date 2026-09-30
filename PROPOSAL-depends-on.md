@@ -105,8 +105,10 @@ local/other-checkout/remote sources the same shape.
 
 Paths and project defaults belong to the source's execution root; consumer overrides
 belong to the consumer's root. Do not inherit the consumer's module image for an imported
-scenario — the version under test is always explicit, never guessed. Resolve remote refs
-once per session and retain that revision for cleanup.
+scenario, nor fall back to whatever image the referenced scenario's own `module:`
+declares — every fixture, inline or referenced, sets its own explicit `module:` (§4); the
+version under test is always explicit, never guessed. Resolve remote refs once per
+session and retain that revision for cleanup.
 
 ### Scope and adaptation
 
@@ -145,11 +147,17 @@ A Terraform fixture's effective `input` (base input, if any, merged with the fix
 own `input` overrides and any `{{...}}` substitutions, above) is written as a single
 generated `<fixture work_dir>/generated.auto.tfvars.json`, which Terraform auto-loads —
 the same "one file carries the whole input" convention `mode: erv2` already uses for
-`/inputs/input.json` (`docker_runner.py`), rather than per-key `-var` flags. Every
-top-level key in `input` must match a declared `variable` block in the source's `.tf`
-files, and every required variable without a default must have a corresponding key —
-checked with `terraform validate` against the generated file before `apply` runs, same
-fail-fast-before-touching-AWS principle as reference resolution (§5, step 1).
+`/inputs/input.json` (`docker_runner.py`), rather than per-key `-var` flags.
+
+`terraform validate` does **not** check this: it validates a configuration's internal
+consistency independent of any variable values, and doesn't surface an unknown or
+missing tfvars key as an error. erv2-itest must do this check itself — read the source's
+declared `variable` blocks (name, whether each has a `default`), e.g. via
+`terraform providers schema -json` or an HCL parse of the `.tf` files, and diff that
+against the fixture's effective `input` before `apply` runs: fail on any `input` key with
+no matching `variable` declaration, and fail on any declared variable that has neither a
+`default` nor a supplied key. Same fail-fast-before-touching-AWS principle as reference
+resolution (§5, step 1).
 
 ## 3. Concrete examples
 
@@ -312,7 +320,7 @@ steps:
       vpc:
         subnets: ["subnet-aaa", "subnet-bbb"]
         security_groups: ["sg-111"]
-      service_execution_role: "{{run_id}}-msk-connect-role"   # static test-account fixture, see below
+      service_execution_role: erv2-itest-msk-connect-role   # static test-account constant, see below
       custom_plugin:
         s3_bucket_arn: "arn:aws:s3:::erv2-itest-fixtures"
         s3_key: "connectors/debezium-postgres-2.5.0.zip"
@@ -414,7 +422,9 @@ fixtures:                        # optional, map[str, Fixture], default {}
       repo: <str>                 #   optional, remote git URL
       ref: <str>                  #   required with repo — branch, tag, or commit SHA
     mode: erv2 | terraform       # inherited from an existing scenario; must agree if set explicitly
-    module: {}                   # ModuleConfig, same shape as the top-level `module:`, for inline erv2 fixtures
+    module: {}                   # ModuleConfig, same shape as the top-level `module:` — required for
+                                   #   inline erv2 fixtures AND as an explicit image override when
+                                   #   referencing an existing scenario (never inherited, see §2 Sources)
     terraform:                    # for inline terraform fixtures
       source: <same source object as `scenario`, pointing at a directory of .tf files>
     base_input: <path>           # for inline fixtures only
