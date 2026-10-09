@@ -152,12 +152,11 @@ the same "one file carries the whole input" convention `mode: erv2` already uses
 `terraform validate` does **not** check this: it validates a configuration's internal
 consistency independent of any variable values, and doesn't surface an unknown or
 missing tfvars key as an error. erv2-itest must do this check itself — read the source's
-declared `variable` blocks (name, whether each has a `default`), e.g. via
-`terraform providers schema -json` or an HCL parse of the `.tf` files, and diff that
-against the fixture's effective `input` before `apply` runs: fail on any `input` key with
-no matching `variable` declaration, and fail on any declared variable that has neither a
-`default` nor a supplied key. Same fail-fast-before-touching-AWS principle as reference
-resolution (§5, step 1).
+declared `variable` blocks (name, whether each has a `default`) by parsing the `.tf` files
+as HCL, and diff that against the fixture's effective `input` before `apply` runs: fail on
+any `input` key with no matching `variable` declaration, and fail on any declared variable
+that has neither a `default` nor a supplied key. Same fail-fast-before-touching-AWS
+principle as reference resolution (§5, step 1).
 
 ## 3. Concrete examples
 
